@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AppCTL — Service Orchestration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #080a0c;
+    --surface:  #0f1318;
+    --border:   #1e2530;
+    --border2:  #2a3342;
+    --text:     #c8d4e0;
+    --muted:    #4a5568;
+    --accent:   #00d4ff;
+    --green:    #00e87a;
+    --red:      #ff3b3b;
+    --orange:   #f0a500;
+    --purple:   #9d7aff;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Barlow', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ─── Header ─── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 56px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+  .logo-icon {
+    width: 28px; height: 28px;
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--accent);
+    position: relative;
+  }
+  .logo-icon::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    background: var(--accent);
+    opacity: 0.2;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .ws-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .ws-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .ws-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  .clock {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ─── Layout ─── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: calc(100vh - 56px);
+  }
+
+  /* ─── Sidebar ─── */
+  aside {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .nav-section {
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+  .nav-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 0 8px 8px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav-item.active {
+    color: var(--accent);
+    background: rgba(0,212,255,0.06);
+    border-color: rgba(0,212,255,0.15);
+  }
+  .nav-icon { font-size: 14px; width: 20px; text-align: center; }
+
+  /* ─── Stats strip ─── */
+  .stats-strip {
+    padding: 12px 16px;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .stat-label { color: var(--muted); }
+  .stat-val { font-weight: 600; }
+  .stat-val.green { color: var(--green); }
+  .stat-val.red { color: var(--red); }
+  .stat-val.orange { color: var(--orange); }
+
+  /* ─── Main ─── */
+  main {
+    padding: 32px;
+    overflow-y: auto;
+  }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .page-title {
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .page-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ─── Buttons ─── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .btn-primary {
+    background: rgba(0,212,255,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn-primary:hover { background: rgba(0,212,255,0.2); }
+  .btn-success {
+    background: rgba(0,232,122,0.08);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .btn-success:hover { background: rgba(0,232,122,0.18); }
+  .btn-danger {
+    background: rgba(255,59,59,0.08);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-danger:hover { background: rgba(255,59,59,0.18); }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border2);
+    color: var(--muted);
+  }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-sm { padding: 5px 10px; font-size: 10px; }
+
+  /* ─── App Grid ─── */
+  .app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .app-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+  .app-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    border-radius: 4px 0 0 4px;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .app-card[data-status="online"]::before { background: var(--green); }
+  .app-card[data-status="offline"]::before { background: var(--red); }
+  .app-card[data-status="starting"]::before { background: var(--orange); animation: pulse 1s infinite; }
+  .app-card[data-status="stopping"]::before { background: var(--orange); animation: pulse 1s infinite; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .app-card:hover { border-color: var(--border2); }
+
+  .card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-name {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .card-desc {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .badge-online  { background: rgba(0,232,122,0.1); color: var(--green); border: 1px solid rgba(0,232,122,0.3); }
+  .badge-offline { background: rgba(255,59,59,0.1);  color: var(--red);   border: 1px solid rgba(255,59,59,0.3); }
+  .badge-unknown { background: rgba(74,85,104,0.2);  color: var(--muted); border: 1px solid var(--border); }
+  .badge-starting,.badge-stopping {
+    background: rgba(240,165,0,0.1); color: var(--orange); border: 1px solid rgba(240,165,0,0.3);
+  }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 16px;
+  }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .meta-key { color: var(--muted); min-width: 80px; }
+  .meta-val { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta-val a { color: var(--accent); text-decoration: none; }
+  .meta-val a:hover { text-decoration: underline; }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* ─── Empty state ─── */
+  .empty {
+    text-align: center;
+    padding: 64px 32px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .empty-title { font-family: var(--mono); font-size: 16px; color: var(--text); margin-bottom: 8px; }
+  .empty-sub { font-size: 13px; }
+
+  /* ─── Login overlay ─── */
+  #loginOverlay {
+    position: fixed; inset: 0; z-index: 9000;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #loginOverlay.hidden { display: none; }
+
+  .login-box {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    padding: 40px 48px;
+    width: 360px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .login-logo {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-align: center;
+  }
+  .login-logo span { color: var(--text); }
+  .login-box label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .login-box input[type=text],
+  .login-box input[type=password] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .login-box input:focus { border-color: var(--accent); }
+  .login-error {
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+    min-height: 16px;
+  }
+  .btn-login {
+    width: 100%;
+    padding: 11px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn-login:hover { background: rgba(0,212,255,0.12); }
+  .btn-login:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ─── Logout button in header ─── */
+  .btn-logout {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+  /* ─── Connection type tabs ─── */
+  .conn-tabs {
+    display: flex; gap: 0; border: 1px solid var(--border2);
+    margin-bottom: 12px;
+  }
+  .conn-tab {
+    flex: 1; text-align: center;
+    padding: 7px 4px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+    color: var(--muted); cursor: pointer;
+    border-right: 1px solid var(--border2);
+    transition: background 0.15s, color 0.15s;
+  }
+  .conn-tab:last-child { border-right: none; }
+  .conn-tab.active { background: rgba(0,212,255,0.1); color: var(--accent); }
+
+  /* ─── Modal ─── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8,10,12,0.85);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    width: 560px;
+    max-width: 96vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: translateY(12px);
+    transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-title {
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+  .modal-close:hover { color: var(--text); background: var(--border); }
+
+  .modal-body { padding: 24px; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  /* ─── Form ─── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+
+  label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  input, select, textarea {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 10px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .section-divider {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0;
+  }
+  .section-divider span {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── Table ─── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .data-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+  .data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ─── Toast ─── */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+    max-width: 340px;
+    animation: slideIn 0.2s ease;
+    cursor: pointer;
+  }
+  .toast.error { border-left-color: var(--red); }
+  .toast.success { border-left-color: var(--green); }
+  .toast.warning { border-left-color: var(--orange); }
+  @keyframes slideIn {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* ─── Output box ─── */
+  .output-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #9db8c8;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 12px;
+    display: none;
+  }
+  .output-box.visible { display: block; }
+
+  /* ─── Scrollbar ─── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* ─── Incidents page ─── */
+  .incidents-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-bar input { max-width: 260px; }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { display: none; }
+    main { padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Header ─────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">▣</div>
+    APP<span style="color:var(--text)">CTL</span>
+  </div>
+  <div class="header-right">
+    <div class="ws-status">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">DISCONNECTED</span>
+    </div>
+    <div class="clock" id="clock"></div>
+    <button class="btn-logout" onclick="doLogout()">LOGOUT</button>
+  </div>
+</header>
+
+<!-- ─── Login Overlay ──────────────────────────────────── -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">APP<span>CTL</span></div>
+    <div>
+      <label>Username</label>
+      <input type="text" id="loginUser" autocomplete="username" spellcheck="false">
+    </div>
+    <div>
+      <label>Password</label>
+      <input type="password" id="loginPass" autocomplete="current-password">
+    </div>
+    <div class="login-error" id="loginErr"></div>
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">LOGIN →</button>
+  </div>
+</div>
+
+<!-- ─── Layout ─────────────────────────────────────────── -->
+<div class="layout">
+  <aside>
+    <div class="nav-section">
+      <div class="nav-label">Monitor</div>
+      <div class="nav-item active" data-page="apps">
+        <span class="nav-icon">◈</span> Services
+      </div>
+      <div class="nav-item" data-page="incidents">
+        <span class="nav-icon">⚡</span> Incidents
+      </div>
+    </div>
+
+    <div class="stats-strip">
+      <div class="stat-row">
+        <span class="stat-label">TOTAL</span>
+        <span class="stat-val" id="statTotal">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">ONLINE</span>
+        <span class="stat-val green" id="statOnline">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">OFFLINE</span>
+        <span class="stat-val red" id="statOffline">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">INCIDENTS</span>
+        <span class="stat-val orange" id="statIncidents">—</span>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ─── Services page ─── -->
+    <div class="page active" id="page-apps">
+      <div class="page-header">
+        <div>
+          <div class="page-title">// SERVICES</div>
+          <div class="page-sub">Registered services — health checks every 30s</div>
+        </div>
+        <button class="btn btn-primary" onclick="openRegisterModal()">
+          ＋ Register App
+        </button>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="searchInput" placeholder="Filter by name or tag…" oninput="renderCards()">
+      </div>
+
+      <div class="app-grid" id="appGrid">
+        <div class="empty">
+          <div class="empty-icon">◫</div>
+          <div class="empty-title">No services registered</div>
+          <div class="empty-sub">Click "Register App" to add your first service.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Incidents page ─── -->
+    <div class="page" id="page-incidents">
+      <div class="page-header">
+        <div>
+          <div class="page-title">// INCIDENTS</div>
+          <div class="page-sub">All recorded downtime events</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadIncidents()">↻ Refresh</button>
+      </div>
+      <div class="incidents-wrap">
+        <table class="data-table" id="incidentTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Service</th>
+              <th>Started</th>
+              <th>Resolved</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody id="incidentBody">
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ─── Register / Edit Modal ────────────────────────── -->
+<div class="modal-overlay" id="appModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">// REGISTER APP</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" id="fName" placeholder="my-api-service">
+        </div>
+        <div class="form-group">
+          <label>Tags</label>
+          <input type="text" id="fTags" placeholder="api,production">
+        </div>
+        <div class="form-group full">
+          <label>Description</label>
+          <input type="text" id="fDesc" placeholder="Short description">
+        </div>
+        <div class="form-group">
+          <label>URL / IP *</label>
+          <input type="text" id="fUrl" placeholder="http://192.168.1.10:8080">
+        </div>
+        <div class="form-group">
+          <label>Health Check Path</label>
+          <input type="text" id="fHealth" placeholder="/health" value="/">
+        </div>
+
+        <div class="section-divider full"><span>Connection — start / stop</span></div>
+
+        <!-- Connection type tabs -->
+        <div class="full">
+          <div class="conn-tabs">
+            <div class="conn-tab active" id="tabSsh"   onclick="setConnTab('ssh')">SSH</div>
+            <div class="conn-tab"        id="tabLocal" onclick="setConnTab('local')">LOCAL</div>
+            <div class="conn-tab"        id="tabWinrm" onclick="setConnTab('winrm')">WINRM</div>
+          </div>
+          <input type="hidden" id="fConnType" value="ssh">
+        </div>
+
+        <!-- SSH panel -->
+        <div id="panelSsh" class="form-row-2" style="display:contents">
+          <div class="form-group">
+            <label>SSH Host</label>
+            <input type="text" id="fSshHost" placeholder="192.168.1.10">
+          </div>
+          <div class="form-group">
+            <label>SSH Port</label>
+            <input type="number" id="fSshPort" value="22">
+          </div>
+          <div class="form-group">
+            <label>SSH User</label>
+            <input type="text" id="fSshUser" placeholder="ubuntu">
+          </div>
+          <div class="form-group">
+            <label>SSH Key Path (server-side)</label>
+            <input type="text" id="fSshKey" placeholder="/home/ubuntu/.ssh/id_rsa">
+          </div>
+        </div>
+
+        <!-- LOCAL panel -->
+        <div id="panelLocal" style="display:none" class="full">
+          <p style="font-family:var(--mono);font-size:11px;color:var(--muted);padding:8px 0;">
+            Commands run directly on the AppCTL host via subprocess — no SSH needed.
+          </p>
+        </div>
+
+        <!-- WinRM panel -->
+        <div id="panelWinrm" style="display:none" class="form-row-2" style="display:contents">
+          <div class="form-group">
+            <label>WinRM Host</label>
+            <input type="text" id="fWinrmHost" placeholder="192.168.1.20">
+          </div>
+          <div class="form-group">
+            <label>WinRM Port</label>
+            <input type="number" id="fWinrmPort" value="5985">
+          </div>
+          <div class="form-group">
+            <label>WinRM User</label>
+            <input type="text" id="fWinrmUser" placeholder="Administrator">
+          </div>
+          <div class="form-group">
+            <label>WinRM Password</label>
+            <input type="password" id="fWinrmPass" placeholder="••••••••">
+          </div>
+          <div class="form-group full" style="display:flex;align-items:center;gap:10px;padding-top:4px;">
+            <input type="checkbox" id="fWinrmSsl" style="width:14px;height:14px;accent-color:var(--accent)">
+            <label style="margin:0;font-size:11px;cursor:pointer;" for="fWinrmSsl">Use HTTPS / SSL (port 5986)</label>
+          </div>
+        </div>
+
+        <!-- Commands (shared) -->
+        <div class="form-group full">
+          <label>Start Command</label>
+          <textarea id="fStart" placeholder="cd /opt/myapp && ./start.sh  |  PowerShell: Start-Service myapp"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Stop Command</label>
+          <textarea id="fStop" placeholder="pkill -f myapp || true  |  PowerShell: Stop-Service myapp"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modalSubmit" onclick="submitAppForm()">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Command Output Modal ─── -->
+<div class="modal-overlay" id="cmdModal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <div class="modal-title" id="cmdModalTitle">// COMMAND OUTPUT</div>
+      <button class="modal-close" onclick="closeCmdModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="cmdStatus" style="font-family:var(--mono);font-size:12px;margin-bottom:8px;"></div>
+      <div class="output-box visible" id="cmdOutput"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toasts ─── -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const API = '';  // same origin
+
+// ─── State ──────────────────────────────────────────────
+let apps = [];
+let editingId = null;
+let appMap = {};  // id -> app
+let authToken = localStorage.getItem('appctl_token') || '';
+
+// ─── Auth ────────────────────────────────────────────────
+async function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const btn  = document.getElementById('loginBtn');
+  const err  = document.getElementById('loginErr');
+  err.textContent = '';
+  if (!user || !pass) { err.textContent = 'Enter username and password.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'AUTHENTICATING…';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass }),
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Login failed.'); }
+    const data = await res.json();
+    authToken = data.access_token;
+    localStorage.setItem('appctl_token', authToken);
+    document.getElementById('loginOverlay').classList.add('hidden');
+    initApp();
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = 'LOGIN →';
+  }
+}
+
+function doLogout() {
+  authToken = '';
+  localStorage.removeItem('appctl_token');
+  if (ws) ws.close();
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+// Allow Enter key on login form
+document.getElementById('loginPass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('loginUser').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('loginPass').focus();
+});
+
+// ─── Clock ──────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toUTCString().replace('GMT', 'UTC').slice(5, 25);
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── WebSocket ──────────────────────────────────────────
+let ws;
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}`);
+  ws.onopen = () => {
+    document.getElementById('wsDot').className = 'ws-dot connected';
+    document.getElementById('wsLabel').textContent = 'LIVE';
+  };
+  ws.onclose = (e) => {
+    document.getElementById('wsDot').className = 'ws-dot';
+    document.getElementById('wsLabel').textContent = 'RECONNECTING';
+    // 4001 = auth rejected — don't reconnect
+    if (e.code !== 4001) setTimeout(connectWS, 3000);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.event === 'status_change') {
+      const app = appMap[msg.app_id];
+      if (app) {
+        app.status = msg.status;
+        if (msg.down_since) app.down_since = msg.down_since;
+        if (msg.status === 'online') app.down_since = null;
+        renderCards();
+        loadStats();
+        const color = msg.status === 'online' ? 'success' : 'error';
+        toast(`${msg.app_name} → ${msg.status.toUpperCase()}`, color);
+      }
+    }
+  };
+  setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 20000);
+}
+
+// ─── Nav ────────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const page = el.dataset.page;
+    document.getElementById(`page-${page}`).classList.add('active');
+    if (page === 'incidents') loadIncidents();
+  });
+});
+
+// ─── API helpers ────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+    },
+    ...opts,
+  });
+  if (res.status === 401) {
+    doLogout();
+    throw new Error('Session expired. Please log in again.');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+// ─── Boot ───────────────────────────────────────────────
+function initApp() {
+  connectWS();
+  loadApps();
+}
+
+// Auto-login if we already have a stored token
+if (authToken) {
+  document.getElementById('loginOverlay').classList.add('hidden');
+  initApp();
+}
+// ─── Load apps ──────────────────────────────────────────
+async function loadApps() {
+  try {
+    apps = await apiFetch('/api/apps');
+    appMap = {};
+    apps.forEach(a => appMap[a.id] = a);
+    renderCards();
+    loadStats();
+  } catch (e) {
+    toast('Failed to load apps: ' + e.message, 'error');
+  }
+}
+
+async function loadStats() {
+  try {
+    const s = await apiFetch('/api/stats');
+    document.getElementById('statTotal').textContent = s.total;
+    document.getElementById('statOnline').textContent = s.online;
+    document.getElementById('statOffline').textContent = s.offline;
+    document.getElementById('statIncidents').textContent = s.open_incidents;
+  } catch (_) {}
+}
+
+// ─── Render cards ───────────────────────────────────────
+function renderCards() {
+  const query = (document.getElementById('searchInput').value || '').toLowerCase();
+  const filtered = apps.filter(a =>
+    a.name.toLowerCase().includes(query) ||
+    (a.tags || '').toLowerCase().includes(query) ||
+    (a.description || '').toLowerCase().includes(query)
+  );
+
+  const grid = document.getElementById('appGrid');
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty">
+      <div class="empty-icon">◫</div>
+      <div class="empty-title">${apps.length ? 'No results' : 'No services registered'}</div>
+      <div class="empty-sub">${apps.length ? 'Try a different search.' : 'Click "Register App" to start monitoring.'}</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(a => {
+    const downFor = a.down_since ? downDuration(a.down_since) : '';
+    const lastChecked = a.last_checked ? timeAgo(a.last_checked) : 'never';
+    const canSSH = a.start_command && (
+      a.connection_type === 'local' ||
+      (a.connection_type === 'ssh'   && a.ssh_host) ||
+      (a.connection_type === 'winrm' && a.winrm_host)
+    );
+    return `
+    <div class="app-card" data-status="${a.status}" id="card-${a.id}">
+      <div class="card-head">
+        <div>
+          <div class="card-name">${esc(a.name)}</div>
+          <div class="card-desc">${esc(a.description || '')}</div>
+        </div>
+        <span class="status-badge badge-${a.status}">
+          <span class="badge-dot"></span>${a.status}
+        </span>
+      </div>
+      <div class="card-meta">
+        <div class="meta-row">
+          <span class="meta-key">url</span>
+          <span class="meta-val"><a href="${esc(a.url)}" target="_blank">${esc(a.url)}</a></span>
+        </div>
+        ${a.tags ? `<div class="meta-row">
+          <span class="meta-key">tags</span>
+          <span class="meta-val" style="color:var(--purple)">${esc(a.tags)}</span>
+        </div>` : ''}
+        <div class="meta-row">
+          <span class="meta-key">checked</span>
+          <span class="meta-val">${lastChecked}</span>
+        </div>
+        ${downFor ? `<div class="meta-row">
+          <span class="meta-key">down for</span>
+          <span class="meta-val" style="color:var(--red)">${downFor}</span>
+        </div>` : ''}
+        ${a.connection_type === 'ssh' && a.ssh_host ? `<div class="meta-row">
+          <span class="meta-key">ssh</span>
+          <span class="meta-val" style="color:var(--muted)">${esc(a.ssh_user)}@${esc(a.ssh_host)}:${a.ssh_port}</span>
+        </div>` : ''}
+        ${a.connection_type === 'winrm' && a.winrm_host ? `<div class="meta-row">
+          <span class="meta-key">winrm</span>
+          <span class="meta-val" style="color:var(--muted)">${esc(a.winrm_user)}@${esc(a.winrm_host)}:${a.winrm_port}</span>
+        </div>` : ''}
+        ${a.connection_type === 'local' ? `<div class="meta-row">
+          <span class="meta-key">exec</span>
+          <span class="meta-val" style="color:var(--muted)">local subprocess</span>
+        </div>` : ''}
+      </div>
+      <div class="card-actions">
+        ${a.start_command ? `<button class="btn btn-success btn-sm" onclick="controlApp(${a.id},'start')">▶ Start</button>` : ''}
+        ${a.stop_command  ? `<button class="btn btn-danger  btn-sm" onclick="controlApp(${a.id},'stop')">■ Stop</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="forceCheck(${a.id})">↻ Check</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEditModal(${a.id})">✎ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteApp(${a.id})" style="margin-left:auto">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── App control ────────────────────────────────────────
+async function controlApp(id, action) {
+  const app = appMap[id];
+  if (!confirm(`${action.toUpperCase()} "${app.name}"?`)) return;
+  try {
+    const res = await apiFetch(`/api/apps/${id}/${action}`, { method: 'POST' });
+    openCmdModal(`${action.toUpperCase()} — ${app.name}`, res.success, res.message, res.output);
+    setTimeout(loadApps, 2000);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function forceCheck(id) {
+  try {
+    const updated = await apiFetch(`/api/apps/${id}/check`, { method: 'POST' });
+    appMap[id] = updated;
+    apps = apps.map(a => a.id === id ? updated : a);
+    renderCards();
+    loadStats();
+    toast(`${updated.name} → ${updated.status.toUpperCase()}`, updated.status === 'online' ? 'success' : 'error');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteApp(id) {
+  const app = appMap[id];
+  if (!confirm(`Delete "${app.name}"? This will remove all incident history.`)) return;
+  try {
+    await apiFetch(`/api/apps/${id}`, { method: 'DELETE' });
+    toast(`${app.name} deleted`, 'warning');
+    loadApps();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ─── Connection type tab switcher ───────────────────────
+function setConnTab(type) {
+  document.getElementById('fConnType').value = type;
+  document.getElementById('tabSsh').classList.toggle('active',   type === 'ssh');
+  document.getElementById('tabLocal').classList.toggle('active', type === 'local');
+  document.getElementById('tabWinrm').classList.toggle('active', type === 'winrm');
+  document.getElementById('panelSsh').style.display   = type === 'ssh'   ? 'contents' : 'none';
+  document.getElementById('panelLocal').style.display = type === 'local' ? 'block'    : 'none';
+  document.getElementById('panelWinrm').style.display = type === 'winrm' ? 'contents' : 'none';
+}
+
+// ─── Register / Edit Modal ──────────────────────────────
+function openRegisterModal() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '// REGISTER APP';
+  document.getElementById('modalSubmit').textContent = 'Register';
+  clearForm();
+  document.getElementById('appModal').classList.add('open');
+}
+
+function openEditModal(id) {
+  const a = appMap[id];
+  editingId = id;
+  document.getElementById('modalTitle').textContent = '// EDIT APP';
+  document.getElementById('modalSubmit').textContent = 'Save';
+  document.getElementById('fName').value    = a.name;
+  document.getElementById('fDesc').value    = a.description;
+  document.getElementById('fUrl').value     = a.url;
+  document.getElementById('fHealth').value  = a.health_path;
+  document.getElementById('fTags').value    = a.tags;
+  document.getElementById('fSshHost').value = a.ssh_host;
+  document.getElementById('fSshPort').value = a.ssh_port;
+  document.getElementById('fSshUser').value = a.ssh_user;
+  document.getElementById('fSshKey').value  = a.ssh_key_path || '';
+  document.getElementById('fWinrmHost').value = a.winrm_host || '';
+  document.getElementById('fWinrmPort').value = a.winrm_port || 5985;
+  document.getElementById('fWinrmUser').value = a.winrm_user || '';
+  document.getElementById('fWinrmPass').value = '';  // never pre-fill passwords
+  document.getElementById('fWinrmSsl').checked = a.winrm_use_ssl || false;
+  document.getElementById('fStart').value   = a.start_command;
+  document.getElementById('fStop').value    = a.stop_command;
+  setConnTab(a.connection_type || 'ssh');
+  document.getElementById('appModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('appModal').classList.remove('open');
+}
+
+function clearForm() {
+  ['fName','fDesc','fUrl','fTags','fSshHost','fSshUser','fSshKey',
+   'fWinrmHost','fWinrmUser','fWinrmPass','fStart','fStop'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('fHealth').value = '/';
+  document.getElementById('fSshPort').value = '22';
+  document.getElementById('fWinrmPort').value = '5985';
+  document.getElementById('fWinrmSsl').checked = false;
+  setConnTab('ssh');
+}
+
+async function submitAppForm() {
+  const connType = document.getElementById('fConnType').value;
+  const payload = {
+    name:           document.getElementById('fName').value.trim(),
+    description:    document.getElementById('fDesc').value.trim(),
+    url:            document.getElementById('fUrl').value.trim(),
+    health_path:    document.getElementById('fHealth').value.trim() || '/',
+    tags:           document.getElementById('fTags').value.trim(),
+    connection_type: connType,
+    ssh_host:       document.getElementById('fSshHost').value.trim(),
+    ssh_port:       parseInt(document.getElementById('fSshPort').value) || 22,
+    ssh_user:       document.getElementById('fSshUser').value.trim(),
+    ssh_key_path:   document.getElementById('fSshKey').value.trim(),
+    winrm_host:     document.getElementById('fWinrmHost').value.trim(),
+    winrm_port:     parseInt(document.getElementById('fWinrmPort').value) || 5985,
+    winrm_user:     document.getElementById('fWinrmUser').value.trim(),
+    winrm_password: document.getElementById('fWinrmPass').value,
+    winrm_use_ssl:  document.getElementById('fWinrmSsl').checked,
+    start_command:  document.getElementById('fStart').value.trim(),
+    stop_command:   document.getElementById('fStop').value.trim(),
+  };
+  // Strip empty password on edit so we don't overwrite with blank
+  if (editingId && !payload.winrm_password) delete payload.winrm_password;
+  if (!payload.name || !payload.url) { toast('Name and URL are required.', 'error'); return; }
+
+  try {
+    if (editingId) {
+      await apiFetch(`/api/apps/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      toast(`${payload.name} updated`, 'success');
+    } else {
+      await apiFetch('/api/apps', { method: 'POST', body: JSON.stringify(payload) });
+      toast(`${payload.name} registered`, 'success');
+    }
+    closeModal();
+    loadApps();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ─── Incidents page ─────────────────────────────────────
+async function loadIncidents() {
+  const tbody = document.getElementById('incidentBody');
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px;">Loading…</td></tr>`;
+  try {
+    const incidents = await apiFetch('/api/incidents?limit=200');
+    if (!incidents.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px;">No incidents recorded</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = incidents.map(i => {
+      const app = appMap[i.app_id];
+      const name = app ? app.name : `app#${i.app_id}`;
+      const resolved = i.resolved_at ? fmtDate(i.resolved_at) : `<span style="color:var(--red)">OPEN</span>`;
+      const dur = i.duration_seconds ? fmtDuration(i.duration_seconds) : (i.resolved_at ? '—' : '<span style="color:var(--orange)">ongoing</span>');
+      return `<tr>
+        <td style="color:var(--muted)">#${i.id}</td>
+        <td style="color:var(--accent)">${esc(name)}</td>
+        <td>${fmtDate(i.started_at)}</td>
+        <td>${resolved}</td>
+        <td>${dur}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);padding:32px;">${e.message}</td></tr>`;
+  }
+}
+
+// ─── Command output modal ────────────────────────────────
+function openCmdModal(title, success, message, output) {
+  document.getElementById('cmdModalTitle').textContent = `// ${title}`;
+  const statusEl = document.getElementById('cmdStatus');
+  statusEl.innerHTML = `<span style="color:${success ? 'var(--green)' : 'var(--red)'}">
+    ${success ? '✓' : '✗'} ${esc(message)}
+  </span>`;
+  const outEl = document.getElementById('cmdOutput');
+  if (output) {
+    outEl.textContent = output;
+    outEl.style.display = 'block';
+  } else {
+    outEl.style.display = 'none';
+  }
+  document.getElementById('cmdModal').classList.add('open');
+}
+function closeCmdModal() {
+  document.getElementById('cmdModal').classList.remove('open');
+}
+
+// ─── Toast ──────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  el.onclick = () => el.remove();
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// ─── Utilities ──────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+function downDuration(iso) {
+  const s = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+function fmtDate(iso) {
+  return new Date(iso + (iso.endsWith('Z') ? '' : 'Z')).toLocaleString();
+}
+function fmtDuration(s) {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+
+// ─── Close modals on overlay click ─────────────────────
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ─── Auto-refresh card timers ────────────────────────────
+setInterval(renderCards, 10000);  // refresh "X ago" labels
+
+// ─── Init ───────────────────────────────────────────────
+// (initApp() is called after login; skip if not authenticated yet)
+if (authToken) setInterval(loadStats, 30000);
+</script>
+</body>
+</html>
